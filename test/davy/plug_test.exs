@@ -3,6 +3,7 @@ defmodule Davy.PlugTest do
 
   alias Davy.Backend.InMemory
   alias Davy.LockStore
+  alias Davy.Test.ProbeAdapter
   alias Davy.Test.StreamingBackend
 
   setup do
@@ -297,6 +298,16 @@ defmodule Davy.PlugTest do
 
       assert resp.status == 200
       assert resp.resp_body == "0123456789ABCDEF"
+    end
+
+    test "stops streaming when the peer stops reading", %{opts: opts} do
+      resp =
+        conn(:get, "/streamed.txt")
+        |> ProbeAdapter.wrap(chunk_error: :timeout)
+        |> call(opts)
+
+      assert resp.state == :chunked
+      assert resp.status == 200
     end
 
     test "streams a resolved range with a matching content-length", %{opts: opts} do

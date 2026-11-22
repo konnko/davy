@@ -95,13 +95,15 @@ defmodule Davy.Handler.Get do
   defp put_body_headers(conn, resource, _range_opts),
     do: {200, put_content_length(conn, resource)}
 
+  # A failed send means the peer is gone or has stopped reading (`:closed`,
+  # `:timeout`, ...). Nothing more can reach it, so stop pulling from the backend.
   defp stream_chunks(conn, status, stream) do
     conn = send_chunked(conn, status)
 
     Enum.reduce_while(stream, conn, fn data, conn ->
       case chunk(conn, data) do
         {:ok, conn} -> {:cont, conn}
-        {:error, :closed} -> {:halt, conn}
+        {:error, _reason} -> {:halt, conn}
       end
     end)
   end
