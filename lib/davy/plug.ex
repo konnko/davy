@@ -18,6 +18,10 @@ defmodule Davy.Plug do
     implement `put_content_stream/4`. Bodies larger than this return
     `413 Request Entity Too Large`. Has no effect when the backend implements
     the streaming callback. (default: 16 MiB)
+  - `:read_timeout` — how long, in milliseconds, to wait for each slice of a
+    PUT body before giving up on the upload. Raise it when clients upload over
+    connections that stall, such as mobile networks. (default: 15 000, the
+    `Plug.Conn.read_body/2` default)
   """
 
   @behaviour Plug
@@ -25,6 +29,7 @@ defmodule Davy.Plug do
   alias Davy.{Handler, Telemetry}
 
   @default_max_buffered_put_bytes 16 * 1024 * 1024
+  @default_read_timeout 15_000
 
   @impl true
   def init(opts) do
@@ -34,7 +39,8 @@ defmodule Davy.Plug do
       lock_timeout: Keyword.get(opts, :lock_timeout, 1800),
       allow_infinity_depth: Keyword.get(opts, :allow_infinity_depth, false),
       max_buffered_put_bytes:
-        Keyword.get(opts, :max_buffered_put_bytes, @default_max_buffered_put_bytes)
+        Keyword.get(opts, :max_buffered_put_bytes, @default_max_buffered_put_bytes),
+      read_timeout: Keyword.get(opts, :read_timeout, @default_read_timeout)
     }
   end
 

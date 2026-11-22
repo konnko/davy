@@ -68,7 +68,7 @@ defmodule Davy.Handler.Put do
     body_stream =
       Stream.resource(
         fn -> :continue end,
-        &next_body_chunk/1,
+        &next_body_chunk(&1, opts.read_timeout),
         fn _ -> :ok end
       )
 
@@ -82,12 +82,12 @@ defmodule Davy.Handler.Put do
     {result, conn}
   end
 
-  defp next_body_chunk(:done), do: {:halt, :done}
+  defp next_body_chunk(:done, _read_timeout), do: {:halt, :done}
 
-  defp next_body_chunk(:continue) do
+  defp next_body_chunk(:continue, read_timeout) do
     conn = Process.get(:davy_put_conn)
 
-    case read_body(conn, length: @body_chunk_size) do
+    case read_body(conn, length: @body_chunk_size, read_timeout: read_timeout) do
       {:ok, "", new_conn} ->
         Process.put(:davy_put_conn, new_conn)
         {:halt, :done}
@@ -108,7 +108,7 @@ defmodule Davy.Handler.Put do
     # 413 rather than silently buffering gigabytes into memory.
     cap = Map.fetch!(opts, :max_buffered_put_bytes)
 
-    case read_capped_body(conn, cap) do
+    case read_capped_body(conn, cap, opts.read_timeout) do
       {:ok, body, conn} ->
         result =
           Telemetry.span_backend(opts.backend, :put_content, %{path: path}, fn ->
@@ -133,17 +133,25 @@ defmodule Davy.Handler.Put do
   # the peer is still sending after `cap` bytes, i.e. the upload exceeds the
   # cap. We drain the rest to let the connection close cleanly without
   # keeping the drained bytes in memory.
-  defp read_capped_body(conn, cap) do
-    case read_body(conn, length: cap, read_length: @body_chunk_size) do
+  defp read_capped_body(conn, cap, read_timeout) do
+    read_opts = [length: cap, read_length: @body_chunk_size, read_timeout: read_timeout]
+
+    case read_body(conn, read_opts) do
       {:ok, body, conn} -> {:ok, body, conn}
-      {:more, _partial, conn} -> {:too_large, drain_body(conn)}
+      {:more, _partial, conn} -> {:too_large, drain_body(conn, read_timeout)}
     end
   end
 
-  defp drain_body(conn) do
-    case read_body(conn, length: @body_chunk_size, read_length: @body_chunk_size) do
+  defp drain_body(conn, read_timeout) do
+    read_opts = [
+      length: @body_chunk_size,
+      read_length: @body_chunk_size,
+      read_timeout: read_timeout
+    ]
+
+    case read_body(conn, read_opts) do
       {:ok, _final, conn} -> conn
-      {:more, _partial, conn} -> drain_body(conn)
+      {:more, _partial, conn} -> drain_body(conn, read_timeout)
     end
   end
 

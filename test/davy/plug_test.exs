@@ -94,6 +94,36 @@ defmodule Davy.PlugTest do
     end
   end
 
+  describe "PUT :read_timeout" do
+    test "reads a buffered body with the configured timeout", _ do
+      opts = Davy.Plug.init(backend: InMemory, read_timeout: 60_000)
+
+      resp = conn(:put, "/a.txt", "data") |> ProbeAdapter.wrap() |> call(opts)
+
+      assert resp.status == 201
+      assert_received {:read_req_body, read_opts}
+      assert read_opts[:read_timeout] == 60_000
+    end
+
+    test "reads a streamed body with the configured timeout", _ do
+      StreamingBackend.start()
+      opts = Davy.Plug.init(backend: StreamingBackend, read_timeout: 60_000)
+
+      resp = conn(:put, "/a.txt", "data") |> ProbeAdapter.wrap() |> call(opts)
+
+      assert resp.status == 201
+      assert_received {:read_req_body, read_opts}
+      assert read_opts[:read_timeout] == 60_000
+    end
+
+    test "defaults to the Plug.Conn.read_body/2 timeout", %{opts: opts} do
+      conn(:put, "/a.txt", "data") |> ProbeAdapter.wrap() |> call(opts)
+
+      assert_received {:read_req_body, read_opts}
+      assert read_opts[:read_timeout] == 15_000
+    end
+  end
+
   describe "PUT (streaming backend)" do
     setup do
       StreamingBackend.start()
