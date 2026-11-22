@@ -5,6 +5,11 @@ defmodule Davy.Resource do
   The backend populates standard metadata fields that the WebDAV server needs
   for property responses and conditional request handling. The `backend_data`
   field carries opaque data passed back to the backend on subsequent calls.
+
+  `quota_available_bytes` and `quota_used_bytes` are reported as the RFC 4331
+  `DAV:quota-available-bytes` and `DAV:quota-used-bytes` properties when a
+  client asks for them, which is how clients show free space. Leave them `nil`
+  on resources the backend keeps no quota for.
   """
 
   @type t :: %__MODULE__{
@@ -16,6 +21,8 @@ defmodule Davy.Resource do
           last_modified: DateTime.t() | nil,
           creation_date: DateTime.t() | nil,
           display_name: String.t() | nil,
+          quota_available_bytes: non_neg_integer() | nil,
+          quota_used_bytes: non_neg_integer() | nil,
           backend_data: term()
         }
 
@@ -29,6 +36,8 @@ defmodule Davy.Resource do
     :last_modified,
     :creation_date,
     :display_name,
+    :quota_available_bytes,
+    :quota_used_bytes,
     :backend_data
   ]
 end

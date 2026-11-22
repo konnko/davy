@@ -249,6 +249,16 @@ defmodule Davy.Handler.Propfind do
   defp get_standard_property(%{display_name: name}, "displayname", _locks) when is_binary(name),
     do: XML.text_element("D:displayname", name)
 
+  # RFC 4331 quota properties. Absent from `@all_dav_properties` on purpose:
+  # §2 and §3 say they should not be returned for `allprop`.
+  defp get_standard_property(%{quota_available_bytes: bytes}, "quota-available-bytes", _locks)
+       when is_integer(bytes),
+       do: Saxy.XML.element("D:quota-available-bytes", [], [Integer.to_string(bytes)])
+
+  defp get_standard_property(%{quota_used_bytes: bytes}, "quota-used-bytes", _locks)
+       when is_integer(bytes),
+       do: Saxy.XML.element("D:quota-used-bytes", [], [Integer.to_string(bytes)])
+
   defp get_standard_property(_resource, "supportedlock", _locks),
     do: XML.supported_lock_element()
 

@@ -5,6 +5,7 @@ defmodule Davy.PlugTest do
   alias Davy.LockStore
   alias Davy.Test.ProbeAdapter
   alias Davy.Test.StreamingBackend
+  alias Davy.Test.TenantBackend
 
   setup do
     InMemory.start()
@@ -714,6 +715,60 @@ defmodule Davy.PlugTest do
 
       assert resp.status == 207
       assert resp.resp_body =~ "collection"
+    end
+  end
+
+  describe "PROPFIND quota properties (RFC 4331)" do
+    @quota_request """
+    <?xml version="1.0" encoding="utf-8"?>
+    <D:propfind xmlns:D="DAV:">
+      <D:prop><D:quota-available-bytes/><D:quota-used-bytes/></D:prop>
+    </D:propfind>
+    """
+
+    setup do
+      {:ok, opts: Davy.Plug.init(backend: TenantBackend)}
+    end
+
+    defp as_tenant(conn, tenant), do: put_req_header(conn, "x-tenant", tenant)
+
+    test "reports the quota the backend put on the resource", %{opts: opts} do
+      resp =
+        conn(:propfind, "/", @quota_request)
+        |> as_tenant("a")
+        |> put_req_header("depth", "0")
+        |> call(opts)
+
+      assert resp.status == 207
+      assert {:ok, tree} = Davy.XML.parse(resp.resp_body)
+      assert texts_of(tree, "quota-available-bytes") == ["1000"]
+      assert texts_of(tree, "quota-used-bytes") == ["24"]
+      assert texts_of(tree, "status") == ["HTTP/1.1 200 OK"]
+    end
+
+    test "answers 404 for a resource without a quota", %{opts: opts} do
+      conn(:put, "/a.txt", "data") |> as_tenant("a") |> call(opts)
+
+      resp =
+        conn(:propfind, "/a.txt", @quota_request)
+        |> as_tenant("a")
+        |> put_req_header("depth", "0")
+        |> call(opts)
+
+      assert {:ok, tree} = Davy.XML.parse(resp.resp_body)
+      assert texts_of(tree, "status") == ["HTTP/1.1 404 Not Found"]
+    end
+
+    test "leaves the quota out of allprop", %{opts: opts} do
+      resp =
+        conn(:propfind, "/")
+        |> as_tenant("a")
+        |> put_req_header("depth", "0")
+        |> call(opts)
+
+      assert {:ok, tree} = Davy.XML.parse(resp.resp_body)
+      assert texts_of(tree, "quota-available-bytes") == []
+      assert texts_of(tree, "getlastmodified") != []
     end
   end
 
