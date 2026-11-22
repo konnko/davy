@@ -27,13 +27,20 @@ defmodule Davy.Handler.CopyMove do
   end
 
   defp do_copy_or_move(conn, opts, path, dest_path) do
-    overwrite? = Helpers.parse_overwrite(conn)
-    operation = if conn.method == "COPY", do: :copy, else: :move
-
-    {:ok, resource} =
+    resolved =
       Telemetry.span_backend(opts.backend, :resolve, %{path: path}, fn ->
         opts.backend.resolve(opts.auth, path)
       end)
+
+    case resolved do
+      {:ok, resource} -> copy_or_move_resource(conn, opts, resource, dest_path)
+      {:error, error} -> Helpers.send_error(conn, error)
+    end
+  end
+
+  defp copy_or_move_resource(conn, opts, resource, dest_path) do
+    overwrite? = Helpers.parse_overwrite(conn)
+    operation = if conn.method == "COPY", do: :copy, else: :move
 
     metadata = %{source_path: resource.path, dest_path: dest_path, overwrite: overwrite?}
 

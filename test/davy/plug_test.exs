@@ -386,6 +386,15 @@ defmodule Davy.PlugTest do
   # --- COPY ---
 
   describe "COPY" do
+    test "returns 404 when the source does not exist", %{opts: opts} do
+      resp =
+        conn(:copy, "/missing.txt")
+        |> put_req_header("destination", "/dest.txt")
+        |> call(opts)
+
+      assert resp.status == 404
+    end
+
     test "copies a file", %{opts: opts} do
       conn(:put, "/src.txt", "data") |> call(opts)
 
@@ -469,6 +478,42 @@ defmodule Davy.PlugTest do
 
       assert (conn(:get, "/dest.txt") |> call(opts)).status == 200
       assert (conn(:get, "/src.txt") |> call(opts)).status == 404
+    end
+
+    test "strips the mount point from the destination only once", %{opts: opts} do
+      conn(:mkcol, "/david") |> call(opts)
+      conn(:mkcol, "/dav") |> call(opts)
+      conn(:put, "/a.txt", "a") |> call(opts)
+      conn(:put, "/b.txt", "b") |> call(opts)
+
+      mounted = fn conn -> %{conn | script_name: ["dav"]} end
+
+      resp =
+        conn(:move, "/a.txt")
+        |> mounted.()
+        |> put_req_header("destination", "http://example.com/dav/david/a.txt")
+        |> call(opts)
+
+      assert resp.status == 201
+      assert (conn(:get, "/david/a.txt") |> call(opts)).status == 200
+
+      resp =
+        conn(:move, "/b.txt")
+        |> mounted.()
+        |> put_req_header("destination", "/dav/dav/b.txt")
+        |> call(opts)
+
+      assert resp.status == 201
+      assert (conn(:get, "/dav/b.txt") |> call(opts)).status == 200
+    end
+
+    test "returns 404 when the source does not exist", %{opts: opts} do
+      resp =
+        conn(:move, "/missing.txt")
+        |> put_req_header("destination", "/dest.txt")
+        |> call(opts)
+
+      assert resp.status == 404
     end
 
     test "prevents move to descendant of self", %{opts: opts} do
