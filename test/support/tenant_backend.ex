@@ -2,8 +2,10 @@ defmodule Davy.Test.TenantBackend do
   @moduledoc """
   The in-memory backend as a multi-tenant server would present it.
 
-  The root collection reports a quota. Storage itself is shared between
-  tenants, which is enough to test what Davy does with these.
+  The `x-tenant` request header names the tenant, whose locks are kept apart
+  from other tenants' by `lock_root/1`, and the root collection reports a
+  quota. Storage itself is shared between tenants, which is enough to test
+  what Davy does with these.
   """
   @behaviour Davy.Backend
 
@@ -17,6 +19,9 @@ defmodule Davy.Test.TenantBackend do
     [tenant] = Plug.Conn.get_req_header(conn, "x-tenant")
     {:ok, %{tenant: tenant}}
   end
+
+  @impl true
+  def lock_root(%{tenant: tenant}), do: [tenant]
 
   @impl true
   def resolve(auth, []) do

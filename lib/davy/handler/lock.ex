@@ -37,8 +37,10 @@ defmodule Davy.Handler.Lock do
   end
 
   defp acquire_lock(conn, opts, path, scope, depth, owner, timeout) do
+    lock_path = Helpers.lock_path(opts, path)
+
     lock_metadata = %{
-      path: path,
+      path: lock_path,
       scope: scope,
       depth: depth,
       owner: owner,
@@ -47,7 +49,7 @@ defmodule Davy.Handler.Lock do
 
     result =
       Telemetry.span_lock_store(opts.lock_store, :lock, lock_metadata, fn ->
-        opts.lock_store.lock(path, scope, :write, depth, owner, timeout)
+        opts.lock_store.lock(lock_path, scope, :write, depth, owner, timeout)
       end)
 
     case result do

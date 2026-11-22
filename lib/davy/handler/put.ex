@@ -14,7 +14,7 @@ defmodule Davy.Handler.Put do
   def handle(conn, opts) do
     path = Helpers.resource_path(conn)
 
-    case Helpers.check_lock(conn, path, opts.lock_store) do
+    case Helpers.check_lock(conn, path, opts) do
       :ok -> do_put(conn, opts, path)
       {:error, error} -> Helpers.send_error(conn, error)
     end

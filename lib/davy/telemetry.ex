@@ -70,7 +70,7 @@ defmodule Davy.Telemetry do
   | -------------- | ------------------------ | ------------------------------- |
   | `:lock_store`  | all                      | Module implementing `LockStore` |
   | `:operation`   | all                      | Callback atom                   |
-  | `:path`        | path-addressed callbacks | Resource path segments          |
+  | `:path`        | path-addressed callbacks | Path segments given to the store |
   | `:token`       | token-addressed          | Lock token                      |
   | `:scope`       | `:lock`                  | `:exclusive \\| :shared`         |
   | `:depth`       | `:lock`                  | `0 \\| :infinity`                |

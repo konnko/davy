@@ -10,7 +10,7 @@ defmodule Davy.Handler.Mkcol do
     path = Helpers.resource_path(conn)
 
     with :ok <- check_no_body(conn),
-         :ok <- Helpers.check_lock(conn, path, opts.lock_store) do
+         :ok <- Helpers.check_lock(conn, path, opts) do
       result =
         Telemetry.span_backend(opts.backend, :create_collection, %{path: path}, fn ->
           opts.backend.create_collection(opts.auth, path)

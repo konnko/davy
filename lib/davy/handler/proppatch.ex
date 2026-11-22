@@ -11,7 +11,7 @@ defmodule Davy.Handler.Proppatch do
   def handle(conn, opts) do
     path = Helpers.resource_path(conn)
 
-    with :ok <- Helpers.check_lock(conn, path, opts.lock_store),
+    with :ok <- Helpers.check_lock(conn, path, opts),
          {:ok, resource} <-
            Telemetry.span_backend(opts.backend, :resolve, %{path: path}, fn ->
              opts.backend.resolve(opts.auth, path)

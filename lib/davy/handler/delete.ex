@@ -10,8 +10,8 @@ defmodule Davy.Handler.Delete do
   def handle(conn, opts) do
     path = Helpers.resource_path(conn)
 
-    with :ok <- Helpers.check_lock(conn, path, opts.lock_store),
-         :ok <- check_descendant_locks(conn, path, opts.lock_store),
+    with :ok <- Helpers.check_lock(conn, path, opts),
+         :ok <- check_descendant_locks(conn, path, opts),
          {:ok, resource} <-
            Telemetry.span_backend(opts.backend, :resolve, %{path: path}, fn ->
              opts.backend.resolve(opts.auth, path)
@@ -40,10 +40,12 @@ defmodule Davy.Handler.Delete do
     end
   end
 
-  defp check_descendant_locks(conn, path, lock_store) do
+  defp check_descendant_locks(conn, path, %{lock_store: lock_store} = opts) do
+    lock_path = Helpers.lock_path(opts, path)
+
     descendants =
-      Telemetry.span_lock_store(lock_store, :get_descendant_locks, %{path: path}, fn ->
-        lock_store.get_descendant_locks(path)
+      Telemetry.span_lock_store(lock_store, :get_descendant_locks, %{path: lock_path}, fn ->
+        lock_store.get_descendant_locks(lock_path)
       end)
 
     case descendants do
@@ -56,7 +58,7 @@ defmodule Davy.Handler.Delete do
         locked =
           descendant_locks
           |> Enum.filter(fn info -> not Enum.member?(tokens, info.token) end)
-          |> Enum.map(& &1.path)
+          |> Enum.map(&Helpers.request_path(opts, &1.path))
           |> Enum.uniq()
 
         case locked do

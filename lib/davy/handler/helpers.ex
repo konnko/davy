@@ -136,21 +136,37 @@ defmodule Davy.Handler.Helpers do
   A lock store that cannot answer returns its own error, which propagates
   unchanged — an unreachable store never reads as "unlocked".
   """
-  @spec check_lock(Plug.Conn.t(), [String.t()], module()) :: :ok | {:error, Error.t()}
-  def check_lock(conn, path, lock_store) do
-    case locks_covering(lock_store, path) do
+  @spec check_lock(Plug.Conn.t(), [String.t()], map()) :: :ok | {:error, Error.t()}
+  def check_lock(conn, path, %{lock_store: lock_store} = opts) do
+    lock_path = lock_path(opts, path)
+
+    case locks_covering(lock_store, lock_path) do
       {:ok, []} ->
         :ok
 
       {:ok, _locks} ->
         conn
         |> extract_lock_tokens()
-        |> find_covering_token(lock_store, path)
+        |> find_covering_token(lock_store, lock_path)
 
       {:error, %Error{} = error} ->
         {:error, error}
     end
   end
+
+  @doc """
+  The path a resource is known by in the lock store: the request path under
+  the backend's `c:Davy.Backend.lock_root/1`.
+  """
+  @spec lock_path(map(), [String.t()]) :: [String.t()]
+  def lock_path(%{lock_root: lock_root}, path), do: lock_root ++ path
+
+  @doc """
+  The request path of a lock store path at or below the lock root.
+  """
+  @spec request_path(map(), [String.t()]) :: [String.t()]
+  def request_path(%{lock_root: lock_root}, lock_path),
+    do: Enum.drop(lock_path, length(lock_root))
 
   @doc """
   Build the error returned when a write is blocked by a lock the request

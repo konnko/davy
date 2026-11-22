@@ -51,7 +51,7 @@ defmodule Davy.Plug do
     case authenticate(opts.backend, conn) do
       {:ok, auth} ->
         Telemetry.span_request(conn, fn ->
-          dispatch(conn, Map.put(opts, :auth, auth))
+          dispatch(conn, Map.merge(opts, %{auth: auth, lock_root: lock_root(opts.backend, auth)}))
         end)
 
       {:error, :unauthorized} ->
@@ -65,6 +65,10 @@ defmodule Davy.Plug do
     Telemetry.span_backend(backend, :authenticate, %{conn: conn}, fn ->
       backend.authenticate(conn)
     end)
+  end
+
+  defp lock_root(backend, auth) do
+    if function_exported?(backend, :lock_root, 1), do: backend.lock_root(auth), else: []
   end
 
   defp dispatch(%Plug.Conn{method: "OPTIONS"} = conn, opts),

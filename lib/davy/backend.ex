@@ -118,7 +118,7 @@ defmodule Davy.Backend do
             ) ::
               {:ok, resource()} | {:error, error()}
 
-  @optional_callbacks put_content_stream: 4
+  @optional_callbacks put_content_stream: 4, lock_root: 1
 
   @doc """
   Delete a resource. For collections, the backend should handle recursive
@@ -146,6 +146,27 @@ defmodule Davy.Backend do
   """
   @callback move(auth_context(), resource(), dest_path :: path(), overwrite? :: boolean()) ::
               {:ok, :created | :no_content} | {:error, error()}
+
+  # --- Locking ---
+
+  @doc """
+  Path segments that place this auth context's tree in the lock store.
+
+  Optional. Davy prepends them to every path it hands to the `Davy.LockStore`,
+  so locks are keyed by `lock_root(auth) ++ path` instead of `path` alone.
+
+  Without this callback all requests share one lock namespace, which is right
+  when every client sees the same tree. A backend that shows each auth context
+  a different tree must implement it — otherwise a lock on `/notes.txt` held
+  by one tenant blocks, and is visible to, every other tenant with a file of
+  that name.
+
+  Return the position of the context's root in one tree common to everybody
+  who can reach the same resources: `["tenant-42"]` for a tenant's whole tree,
+  `["tenant-42", "photos"]` for a credential confined to that folder. Both then
+  agree on the lock for `tenant-42/photos/a.jpg`.
+  """
+  @callback lock_root(auth_context()) :: path()
 
   # --- Collection operations ---
 

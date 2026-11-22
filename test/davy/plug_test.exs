@@ -730,8 +730,6 @@ defmodule Davy.PlugTest do
       {:ok, opts: Davy.Plug.init(backend: TenantBackend)}
     end
 
-    defp as_tenant(conn, tenant), do: put_req_header(conn, "x-tenant", tenant)
-
     test "reports the quota the backend put on the resource", %{opts: opts} do
       resp =
         conn(:propfind, "/", @quota_request)
@@ -944,6 +942,70 @@ defmodule Davy.PlugTest do
     end
   end
 
+  describe "LOCK with a backend lock_root" do
+    @exclusive_lock """
+    <?xml version="1.0" encoding="utf-8"?>
+    <D:lockinfo xmlns:D="DAV:">
+      <D:lockscope><D:exclusive/></D:lockscope>
+      <D:locktype><D:write/></D:locktype>
+      <D:owner><D:href>owner-of-the-lock</D:href></D:owner>
+    </D:lockinfo>
+    """
+
+    setup do
+      opts = Davy.Plug.init(backend: TenantBackend)
+      conn(:mkcol, "/dir") |> as_tenant("a") |> call(opts)
+      conn(:put, "/dir/b.txt", "data") |> as_tenant("a") |> call(opts)
+
+      resp = conn(:lock, "/dir/b.txt", @exclusive_lock) |> as_tenant("a") |> call(opts)
+      assert resp.status == 200
+
+      {:ok, opts: opts}
+    end
+
+    test "still blocks the tenant that holds the lock", %{opts: opts} do
+      resp = conn(:put, "/dir/b.txt", "new") |> as_tenant("a") |> call(opts)
+
+      assert resp.status == 423
+    end
+
+    test "does not block the same path of another tenant", %{opts: opts} do
+      resp = conn(:put, "/dir/b.txt", "new") |> as_tenant("b") |> call(opts)
+
+      assert resp.status == 204
+    end
+
+    test "lets another tenant lock the same path", %{opts: opts} do
+      resp = conn(:lock, "/dir/b.txt", @exclusive_lock) |> as_tenant("b") |> call(opts)
+
+      assert resp.status == 200
+    end
+
+    test "does not show the lock to another tenant", %{opts: opts} do
+      lockdiscovery = fn tenant ->
+        resp =
+          conn(:propfind, "/dir/b.txt")
+          |> as_tenant(tenant)
+          |> put_req_header("depth", "0")
+          |> call(opts)
+
+        resp.resp_body
+      end
+
+      assert lockdiscovery.("a") =~ "owner-of-the-lock"
+      refute lockdiscovery.("b") =~ "owner-of-the-lock"
+      refute lockdiscovery.("b") =~ "opaquelocktoken"
+    end
+
+    test "reports locked descendants by their request path", %{opts: opts} do
+      resp = conn(:delete, "/dir") |> as_tenant("a") |> call(opts)
+
+      assert resp.status == 207
+      assert {:ok, tree} = Davy.XML.parse(resp.resp_body)
+      assert texts_of(tree, "href") == ["/dir/b.txt"]
+    end
+  end
+
   describe "UNLOCK" do
     test "releases a lock", %{opts: opts} do
       conn(:put, "/test.txt", "data") |> call(opts)
@@ -1009,6 +1071,7 @@ defmodule Davy.PlugTest do
   end
 
   defp put_req_header(conn, key, value), do: Plug.Conn.put_req_header(conn, key, value)
+  defp as_tenant(conn, tenant), do: put_req_header(conn, "x-tenant", tenant)
 
   # Text content of every `DAV:` element called `name` in a parsed response.
   defp texts_of({"DAV:", name, _attrs, children} = element, name) do

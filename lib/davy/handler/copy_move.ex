@@ -82,11 +82,11 @@ defmodule Davy.Handler.CopyMove do
     if conn.method == "MOVE" do
       source_path = Helpers.resource_path(conn)
 
-      with :ok <- Helpers.check_lock(conn, source_path, opts.lock_store) do
-        Helpers.check_lock(conn, dest_path, opts.lock_store)
+      with :ok <- Helpers.check_lock(conn, source_path, opts) do
+        Helpers.check_lock(conn, dest_path, opts)
       end
     else
-      Helpers.check_lock(conn, dest_path, opts.lock_store)
+      Helpers.check_lock(conn, dest_path, opts)
     end
   end
 end

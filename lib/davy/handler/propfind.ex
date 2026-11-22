@@ -212,8 +212,10 @@ defmodule Davy.Handler.Propfind do
   end
 
   defp get_locks(opts, path) do
-    Telemetry.span_lock_store(opts.lock_store, :get_locks, %{path: path}, fn ->
-      opts.lock_store.get_locks(path)
+    lock_path = Helpers.lock_path(opts, path)
+
+    Telemetry.span_lock_store(opts.lock_store, :get_locks, %{path: lock_path}, fn ->
+      opts.lock_store.get_locks(lock_path)
     end)
   end
 
