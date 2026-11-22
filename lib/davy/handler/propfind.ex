@@ -235,10 +235,10 @@ defmodule Davy.Handler.Propfind do
        do: Saxy.XML.element("D:getcontentlength", [], [Integer.to_string(len)])
 
   defp get_standard_property(%{content_type: ct}, "getcontenttype", _locks) when is_binary(ct),
-    do: Saxy.XML.element("D:getcontenttype", [], [ct])
+    do: XML.text_element("D:getcontenttype", ct)
 
   defp get_standard_property(%{etag: etag}, "getetag", _locks) when is_binary(etag),
-    do: Saxy.XML.element("D:getetag", [], [etag])
+    do: XML.text_element("D:getetag", etag)
 
   defp get_standard_property(%{last_modified: %DateTime{} = dt}, "getlastmodified", _locks),
     do: Saxy.XML.element("D:getlastmodified", [], [format_http_date(dt)])
@@ -247,7 +247,7 @@ defmodule Davy.Handler.Propfind do
     do: Saxy.XML.element("D:creationdate", [], [DateTime.to_iso8601(dt)])
 
   defp get_standard_property(%{display_name: name}, "displayname", _locks) when is_binary(name),
-    do: Saxy.XML.element("D:displayname", [], [name])
+    do: XML.text_element("D:displayname", name)
 
   defp get_standard_property(_resource, "supportedlock", _locks),
     do: XML.supported_lock_element()
@@ -259,7 +259,7 @@ defmodule Davy.Handler.Propfind do
 
   defp build_custom_prop_element(_ns, _name, value) when is_binary(value) do
     # For custom props, the full element is built by the caller
-    Saxy.XML.element("custom", [], [value])
+    XML.text_element("custom", value)
   end
 
   defp build_custom_prop_element(_ns, _name, {_, _, _} = el), do: el

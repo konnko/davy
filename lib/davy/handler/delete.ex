@@ -90,7 +90,7 @@ defmodule Davy.Handler.Delete do
     href = Helpers.href(%{conn | path_info: path}, path)
 
     Saxy.XML.element("D:response", [], [
-      Saxy.XML.element("D:href", [], [href]),
+      XML.text_element("D:href", href),
       Saxy.XML.element("D:status", [], [
         "HTTP/1.1 #{status} #{Status.reason_phrase(status)}"
       ])

@@ -486,6 +486,24 @@ defmodule Davy.PlugTest do
   # --- PROPFIND ---
 
   describe "PROPFIND" do
+    test "escapes XML metacharacters in names and content types", %{opts: opts} do
+      conn(:put, "/Tom%20%26%20Jerry%20%3Cv2%3E.txt", "hi")
+      |> put_req_header("content-type", "text/x-a&b")
+      |> call(opts)
+
+      resp =
+        conn(:propfind, "/")
+        |> put_req_header("depth", "1")
+        |> call(opts)
+
+      assert resp.status == 207
+      assert {:ok, tree} = Davy.XML.parse(resp.resp_body)
+
+      assert "/Tom%20&%20Jerry%20%3Cv2%3E.txt" in texts_of(tree, "href")
+      assert "Tom & Jerry <v2>.txt" in texts_of(tree, "displayname")
+      assert "text/x-a&b" in texts_of(tree, "getcontenttype")
+    end
+
     test "returns properties for a file (allprop, empty body)", %{opts: opts} do
       conn(:put, "/test.txt", "hello")
       |> put_req_header("content-type", "text/plain")
@@ -663,6 +681,27 @@ defmodule Davy.PlugTest do
   # --- LOCK / UNLOCK ---
 
   describe "LOCK" do
+    test "escapes XML metacharacters in the lock owner", %{opts: opts} do
+      conn(:put, "/test.txt", "data") |> call(opts)
+
+      lock_body = """
+      <?xml version="1.0" encoding="utf-8"?>
+      <D:lockinfo xmlns:D="DAV:">
+        <D:lockscope><D:exclusive/></D:lockscope>
+        <D:locktype><D:write/></D:locktype>
+        <D:owner><D:href>Tom &amp; Jerry &lt;tj@example.com&gt;</D:href></D:owner>
+      </D:lockinfo>
+      """
+
+      resp = conn(:lock, "/test.txt", lock_body) |> call(opts)
+
+      assert resp.status == 200
+      assert {:ok, tree} = Davy.XML.parse(resp.resp_body)
+
+      assert {_, "owner", _, owner} = find_element(tree, "owner")
+      assert texts_of({"DAV:", "owner", [], owner}, "href") == ["Tom & Jerry <tj@example.com>"]
+    end
+
     test "creates an exclusive lock", %{opts: opts} do
       conn(:put, "/test.txt", "data") |> call(opts)
 
@@ -829,4 +868,25 @@ defmodule Davy.PlugTest do
   end
 
   defp put_req_header(conn, key, value), do: Plug.Conn.put_req_header(conn, key, value)
+
+  # Text content of every `DAV:` element called `name` in a parsed response.
+  defp texts_of({"DAV:", name, _attrs, children} = element, name) do
+    [Enum.join(Enum.filter(children, &is_binary/1)) | texts_of_children(element, name)]
+  end
+
+  defp texts_of(element, name), do: texts_of_children(element, name)
+
+  defp texts_of_children({_ns, _name, _attrs, children}, name) do
+    children
+    |> Enum.reject(&is_binary/1)
+    |> Enum.flat_map(&texts_of(&1, name))
+  end
+
+  defp find_element({"DAV:", name, _attrs, _children} = element, name), do: element
+
+  defp find_element({_ns, _name, _attrs, children}, name) do
+    children
+    |> Enum.reject(&is_binary/1)
+    |> Enum.find_value(&find_element(&1, name))
+  end
 end

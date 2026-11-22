@@ -134,17 +134,27 @@ defmodule Davy.XML do
         ])
       end)
 
-    element("D:response", [], [
-      element("D:href", [], [href]) | propstat_elements
-    ])
+    element("D:response", [], [text_element("D:href", href) | propstat_elements])
   end
+
+  @doc """
+  Build an element whose only child is `text`.
+
+  Saxy writes binary children out verbatim, so text taken from a backend or a
+  client — a file name, a content type, a lock owner — must go through here to
+  have `&`, `<` and `>` escaped. Otherwise a resource called `a & b.txt` makes
+  the whole response ill-formed.
+  """
+  @spec text_element(String.t(), String.t()) :: Saxy.XML.element()
+  def text_element(name, text) when is_binary(text),
+    do: element(name, [], [characters(text)])
 
   @doc """
   Build a property element for a standard DAV: property.
   """
   @spec dav_property(String.t(), String.t() | tuple() | nil) :: Saxy.XML.element()
   def dav_property(name, nil), do: empty_element("D:#{name}", [])
-  def dav_property(name, value) when is_binary(value), do: element("D:#{name}", [], [value])
+  def dav_property(name, value) when is_binary(value), do: text_element("D:#{name}", value)
 
   def dav_property(name, {_, _, _} = child),
     do: element("D:#{name}", [], [child])
@@ -200,7 +210,7 @@ defmodule Davy.XML do
   def error_body(message) do
     root =
       element("D:error", [{"xmlns:D", @dav_ns}], [
-        element("D:message", [], [message])
+        text_element("D:message", message)
       ])
 
     Saxy.encode_to_iodata!(root, version: "1.0")
@@ -231,13 +241,13 @@ defmodule Davy.XML do
       element("D:depth", [], [depth_str]),
       element("D:timeout", [], [timeout_str]),
       element("D:locktoken", [], [
-        element("D:href", [], ["opaquelocktoken:#{lock_info.token}"])
+        text_element("D:href", "opaquelocktoken:#{lock_info.token}")
       ])
     ]
 
     children =
       if lock_info.owner do
-        children ++ [element("D:owner", [], [element("D:href", [], [lock_info.owner])])]
+        children ++ [element("D:owner", [], [text_element("D:href", lock_info.owner)])]
       else
         children
       end
