@@ -43,25 +43,22 @@ defmodule Davy.Handler.Helpers do
     case Plug.Conn.get_req_header(conn, "destination") do
       [dest_uri] ->
         uri = URI.parse(dest_uri)
-        path = uri.path || "/"
-        prefix = "/" <> Enum.join(conn.script_name, "/")
+        segments = String.split(uri.path || "/", "/", trim: true)
 
-        stripped =
-          if String.starts_with?(path, prefix) do
-            String.trim_leading(path, prefix)
-          else
-            path
-          end
-
-        segments =
-          stripped
-          |> String.split("/", trim: true)
-          |> Enum.map(&URI.decode/1)
-
-        {:ok, segments}
+        {:ok, segments |> drop_mount_point(conn.script_name) |> Enum.map(&URI.decode/1)}
 
       [] ->
         {:error, :bad_request}
+    end
+  end
+
+  # Compared segment by segment and dropped once: a destination such as
+  # `/dav/david/a.txt` under a `/dav` mount must stay `david/a.txt`.
+  defp drop_mount_point(segments, script_name) do
+    if List.starts_with?(segments, script_name) do
+      Enum.drop(segments, length(script_name))
+    else
+      segments
     end
   end
 
