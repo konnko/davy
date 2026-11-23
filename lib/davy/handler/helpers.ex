@@ -1,7 +1,7 @@
 defmodule Davy.Handler.Helpers do
   @moduledoc false
 
-  alias Davy.{Error, Telemetry}
+  alias Davy.{Error, Telemetry, XML}
 
   @doc """
   Extract the resource path from the conn as a list of decoded URI segments.
@@ -152,6 +152,71 @@ defmodule Davy.Handler.Helpers do
       {:error, %Error{} = error} ->
         {:error, error}
     end
+  end
+
+  @doc """
+  Check the locks held on resources below `path`.
+
+  Returns `:ok` if every such lock has its token in the `If` header, or
+  `{:locked_descendants, paths}` with the request paths of the members still
+  locked against the request.
+  """
+  @spec check_descendant_locks(Plug.Conn.t(), [String.t()], map()) ::
+          :ok | {:locked_descendants, [[String.t()]]} | {:error, Error.t()}
+  def check_descendant_locks(conn, path, %{lock_store: lock_store} = opts) do
+    lock_path = lock_path(opts, path)
+
+    descendants =
+      Telemetry.span_lock_store(lock_store, :get_descendant_locks, %{path: lock_path}, fn ->
+        lock_store.get_descendant_locks(lock_path)
+      end)
+
+    case descendants do
+      {:ok, []} ->
+        :ok
+
+      {:ok, descendant_locks} ->
+        tokens = extract_lock_tokens(conn)
+
+        locked =
+          descendant_locks
+          |> Enum.filter(fn info -> not Enum.member?(tokens, info.token) end)
+          |> Enum.map(&request_path(opts, &1.path))
+          |> Enum.uniq()
+
+        case locked do
+          [] -> :ok
+          paths -> {:locked_descendants, paths}
+        end
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
+  @doc """
+  Send a 207 Multi-Status with one status per resource path.
+  """
+  @spec send_multistatus(Plug.Conn.t(), [{[String.t()], Plug.Conn.status()}]) ::
+          Plug.Conn.t()
+  def send_multistatus(conn, statuses) do
+    body =
+      statuses
+      |> Enum.map(fn {path, status} -> status_response(conn, path, status) end)
+      |> XML.multistatus()
+
+    conn
+    |> Plug.Conn.put_resp_content_type("application/xml", nil)
+    |> Plug.Conn.send_resp(207, body)
+  end
+
+  defp status_response(conn, path, status) do
+    Saxy.XML.element("D:response", [], [
+      XML.text_element("D:href", href(conn, path)),
+      Saxy.XML.element("D:status", [], [
+        "HTTP/1.1 #{status} #{Plug.Conn.Status.reason_phrase(status)}"
+      ])
+    ])
   end
 
   @doc """

@@ -1006,6 +1006,113 @@ defmodule Davy.PlugTest do
     end
   end
 
+  describe "COPY and MOVE with locked members" do
+    @member_lock """
+    <?xml version="1.0" encoding="utf-8"?>
+    <D:lockinfo xmlns:D="DAV:">
+      <D:lockscope><D:exclusive/></D:lockscope>
+      <D:locktype><D:write/></D:locktype>
+    </D:lockinfo>
+    """
+
+    setup %{opts: opts} do
+      for dir <- ["/locked", "/other"], do: conn(:mkcol, dir) |> call(opts)
+      conn(:put, "/locked/doc.txt", "locked") |> call(opts)
+      conn(:put, "/other/new.txt", "other") |> call(opts)
+
+      resp = conn(:lock, "/locked/doc.txt", @member_lock) |> call(opts)
+      assert resp.status == 200
+
+      token = resp |> get_header("lock-token") |> String.trim("<") |> String.trim(">")
+      {:ok, if_header: "(<#{token}>)"}
+    end
+
+    defp copy_or_move(method, source, destination) do
+      conn(method, source)
+      |> put_req_header("destination", destination)
+      |> put_req_header("overwrite", "T")
+    end
+
+    defp exists?(path, opts), do: (conn(:propfind, path) |> call(opts)).status == 207
+
+    test "refuses a MOVE that overwrites a collection with a locked member", %{opts: opts} do
+      resp = copy_or_move(:move, "/other", "/locked") |> call(opts)
+
+      assert resp.status == 207
+      assert {:ok, tree} = Davy.XML.parse(resp.resp_body)
+      assert texts_of(tree, "href") == ["/locked/doc.txt"]
+      assert texts_of(tree, "status") == ["HTTP/1.1 423 Locked"]
+      assert exists?("/locked/doc.txt", opts)
+      assert exists?("/other/new.txt", opts)
+    end
+
+    test "refuses a COPY that overwrites a collection with a locked member", %{opts: opts} do
+      resp = copy_or_move(:copy, "/other", "/locked") |> call(opts)
+
+      assert resp.status == 207
+      assert {:ok, tree} = Davy.XML.parse(resp.resp_body)
+      assert texts_of(tree, "href") == ["/locked/doc.txt"]
+      assert exists?("/locked/doc.txt", opts)
+    end
+
+    test "refuses a MOVE of a collection with a locked member", %{opts: opts} do
+      resp = copy_or_move(:move, "/locked", "/moved") |> call(opts)
+
+      assert resp.status == 207
+      assert {:ok, tree} = Davy.XML.parse(resp.resp_body)
+      assert texts_of(tree, "href") == ["/locked/doc.txt"]
+      assert exists?("/locked/doc.txt", opts)
+      refute exists?("/moved", opts)
+    end
+
+    test "overwrites a collection with a locked member by MOVE given the token", %{
+      opts: opts,
+      if_header: if_header
+    } do
+      resp =
+        copy_or_move(:move, "/other", "/locked")
+        |> put_req_header("if", if_header)
+        |> call(opts)
+
+      assert resp.status == 204
+      assert exists?("/locked/new.txt", opts)
+    end
+
+    test "overwrites a collection with a locked member by COPY given the token", %{
+      opts: opts,
+      if_header: if_header
+    } do
+      resp =
+        copy_or_move(:copy, "/other", "/locked")
+        |> put_req_header("if", if_header)
+        |> call(opts)
+
+      assert resp.status == 204
+      assert exists?("/locked/new.txt", opts)
+    end
+
+    test "moves a collection with a locked member given the token", %{
+      opts: opts,
+      if_header: if_header
+    } do
+      resp =
+        copy_or_move(:move, "/locked", "/moved")
+        |> put_req_header("if", if_header)
+        |> call(opts)
+
+      assert resp.status == 201
+      assert exists?("/moved/doc.txt", opts)
+    end
+
+    test "copies a collection with a locked member without the token", %{opts: opts} do
+      resp = copy_or_move(:copy, "/locked", "/copied") |> call(opts)
+
+      assert resp.status == 201
+      assert exists?("/copied/doc.txt", opts)
+      assert exists?("/locked/doc.txt", opts)
+    end
+  end
+
   describe "UNLOCK" do
     test "releases a lock", %{opts: opts} do
       conn(:put, "/test.txt", "data") |> call(opts)

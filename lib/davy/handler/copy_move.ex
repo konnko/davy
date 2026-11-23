@@ -12,9 +12,13 @@ defmodule Davy.Handler.CopyMove do
     with {:ok, dest_path} <- Helpers.parse_destination(conn),
          :ok <- check_not_self(path, dest_path),
          :ok <- check_not_descendant(conn.method, path, dest_path),
-         :ok <- maybe_check_lock(conn, path, dest_path, opts) do
+         :ok <- maybe_check_lock(conn, path, dest_path, opts),
+         :ok <- check_member_locks(conn, path, dest_path, opts) do
       do_copy_or_move(conn, opts, path, dest_path)
     else
+      {:locked_descendants, locked_paths} ->
+        Helpers.send_multistatus(conn, Enum.map(locked_paths, &{&1, 423}))
+
       {:error, :bad_request} ->
         send_resp(conn, 400, "Missing Destination header")
 
@@ -87,6 +91,27 @@ defmodule Davy.Handler.CopyMove do
       end
     else
       Helpers.check_lock(conn, dest_path, opts)
+    end
+  end
+
+  # A MOVE takes the source's members away and an overwrite deletes the
+  # destination's, so both need the tokens of the locks held on them.
+  defp check_member_locks(conn, source_path, dest_path, opts) do
+    with :ok <- maybe_check_source_members(conn, source_path, opts) do
+      maybe_check_destination_members(conn, dest_path, opts)
+    end
+  end
+
+  defp maybe_check_source_members(%{method: "MOVE"} = conn, source_path, opts),
+    do: Helpers.check_descendant_locks(conn, source_path, opts)
+
+  defp maybe_check_source_members(_conn, _source_path, _opts), do: :ok
+
+  defp maybe_check_destination_members(conn, dest_path, opts) do
+    if Helpers.parse_overwrite(conn) do
+      Helpers.check_descendant_locks(conn, dest_path, opts)
+    else
+      :ok
     end
   end
 end
