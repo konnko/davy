@@ -14,13 +14,18 @@ defmodule Davy.Handler.Helpers do
 
   @doc """
   Build the full href for a resource path, including the script_name prefix.
+
+  Every segment is percent-encoded down to the unreserved characters, so a name
+  with `#`, `?` or `:` stays one path segment for the client that follows the href.
   """
   @spec href(Plug.Conn.t(), [String.t()]) :: String.t()
   def href(conn, path) do
-    prefix = Enum.map_join(conn.script_name, "/", &URI.encode/1)
-    suffix = Enum.map_join(path, "/", &URI.encode/1)
+    prefix = Enum.map_join(conn.script_name, "/", &encode_segment/1)
+    suffix = Enum.map_join(path, "/", &encode_segment/1)
     "/#{prefix}/#{suffix}" |> String.replace("//", "/")
   end
+
+  defp encode_segment(segment), do: URI.encode(segment, &URI.char_unreserved?/1)
 
   @doc """
   Parse the `Depth` header. Returns 0, 1, or :infinity.

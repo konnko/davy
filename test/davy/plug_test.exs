@@ -586,9 +586,27 @@ defmodule Davy.PlugTest do
       assert resp.status == 207
       assert {:ok, tree} = Davy.XML.parse(resp.resp_body)
 
-      assert "/Tom%20&%20Jerry%20%3Cv2%3E.txt" in texts_of(tree, "href")
+      assert "/Tom%20%26%20Jerry%20%3Cv2%3E.txt" in texts_of(tree, "href")
       assert "Tom & Jerry <v2>.txt" in texts_of(tree, "displayname")
       assert "text/x-a&b" in texts_of(tree, "getcontenttype")
+    end
+
+    test "percent-encodes URL delimiters in hrefs", %{opts: opts} do
+      conn(:put, "/Report%20%231%3F%20a%3Ab.txt", "hi")
+      |> call(opts)
+
+      resp =
+        conn(:propfind, "/")
+        |> put_req_header("depth", "1")
+        |> call(opts)
+
+      assert {:ok, tree} = Davy.XML.parse(resp.resp_body)
+      assert "/Report%20%231%3F%20a%3Ab.txt" in texts_of(tree, "href")
+      assert "Report #1? a:b.txt" in texts_of(tree, "displayname")
+
+      followed = conn(:get, "/Report%20%231%3F%20a%3Ab.txt") |> call(opts)
+      assert followed.status == 200
+      assert followed.resp_body == "hi"
     end
 
     test "returns properties for a file (allprop, empty body)", %{opts: opts} do
