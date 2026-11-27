@@ -951,6 +951,24 @@ defmodule Davy.PlugTest do
       assert resp.resp_body =~ "exclusive"
     end
 
+    test "fails and holds no lock when nothing can be created at the path", %{opts: opts} do
+      lock_body = """
+      <?xml version="1.0" encoding="utf-8"?>
+      <D:lockinfo xmlns:D="DAV:">
+        <D:lockscope><D:exclusive/></D:lockscope>
+        <D:locktype><D:write/></D:locktype>
+      </D:lockinfo>
+      """
+
+      resp = conn(:lock, "/missing/new.txt", lock_body) |> call(opts)
+
+      assert resp.status == 409
+      assert get_header(resp, "lock-token") == nil
+
+      conn(:mkcol, "/missing") |> call(opts)
+      assert (conn(:put, "/missing/new.txt", "data") |> call(opts)).status == 201
+    end
+
     test "returns 423 when lock conflicts", %{opts: opts} do
       conn(:put, "/test.txt", "data") |> call(opts)
 

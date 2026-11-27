@@ -81,18 +81,31 @@ defmodule Davy.Handler.Lock do
         opts.backend.resolve(opts.auth, path)
       end)
 
-    status =
+    created =
       case resolved do
-        {:ok, _} -> 200
-        {:error, _} -> maybe_create_empty(opts, path)
+        {:ok, _} -> {:ok, 200}
+        {:error, _} -> create_empty(opts, path)
       end
 
-    body = XML.lock_response(lock_info)
+    case created do
+      {:ok, status} ->
+        conn
+        |> put_resp_content_type("application/xml", nil)
+        |> put_resp_header("lock-token", "<opaquelocktoken:#{token}>")
+        |> send_resp(status, XML.lock_response(lock_info))
 
-    conn
-    |> put_resp_content_type("application/xml", nil)
-    |> put_resp_header("lock-token", "<opaquelocktoken:#{token}>")
-    |> send_resp(status, body)
+      {:error, error} ->
+        # Nothing exists at the path and nothing could be created there
+        # (RFC 4918 §9.10.4), so there is nothing to hold a lock on.
+        release(opts, token)
+        Helpers.send_error(conn, error)
+    end
+  end
+
+  defp release(opts, token) do
+    Telemetry.span_lock_store(opts.lock_store, :unlock, %{token: token}, fn ->
+      opts.lock_store.unlock(token)
+    end)
   end
 
   defp refresh_lock(conn, opts, token, timeout) do
@@ -213,7 +226,7 @@ defmodule Davy.Handler.Lock do
     end
   end
 
-  defp maybe_create_empty(opts, path) do
+  defp create_empty(opts, path) do
     result =
       Telemetry.span_backend(opts.backend, :put_content, %{path: path}, fn ->
         opts.backend.put_content(opts.auth, path, "", %{
@@ -221,9 +234,6 @@ defmodule Davy.Handler.Lock do
         })
       end)
 
-    case result do
-      {:ok, _} -> 201
-      {:error, _} -> 200
-    end
+    with {:ok, _resource} <- result, do: {:ok, 201}
   end
 end
