@@ -5,6 +5,17 @@ defmodule Davy.LockStore.ETS do
   Locks are stored in a named ETS table with TTL-based expiry. Expired locks
   are deleted whenever a new lock is taken, so the table holds the active
   locks and those expired since the last LOCK.
+
+  An ETS table dies with the process that created it, so put the store in
+  your supervision tree and the table lives as long as your application:
+
+      children = [
+        Davy.LockStore.ETS,
+        MyAppWeb.Endpoint
+      ]
+
+  Without that the table is created by the first request that needs it and
+  disappears, with every lock in it, when that request's process exits.
   """
 
   @behaviour Davy.LockStore
@@ -12,8 +23,20 @@ defmodule Davy.LockStore.ETS do
   @table __MODULE__
 
   @doc """
-  Initialise the ETS table. Call this once during application startup
-  or in your test setup.
+  Child spec for a process that owns the table. See the module documentation.
+  """
+  @spec child_spec(term()) :: Supervisor.child_spec()
+  def child_spec(_opts), do: %{id: __MODULE__, start: {__MODULE__, :start_link, []}}
+
+  @doc """
+  Start the process that owns the table.
+  """
+  @spec start_link() :: Agent.on_start()
+  def start_link, do: Agent.start_link(&init/0, name: __MODULE__)
+
+  @doc """
+  Initialise the ETS table in the calling process, which then owns it.
+  Prefer the supervised owner; this suits tests and scripts.
   """
   @spec init() :: :ok
   def init do

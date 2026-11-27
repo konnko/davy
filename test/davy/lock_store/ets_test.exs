@@ -8,6 +8,18 @@ defmodule Davy.LockStore.ETSTest do
     :ok
   end
 
+  describe "supervised owner" do
+    test "keeps the table and its locks when the process that took them exits" do
+      :ets.delete(ETS)
+      start_supervised!(ETS)
+
+      {:ok, token} =
+        Task.await(Task.async(fn -> ETS.lock(["file.txt"], :exclusive, :write, 0, nil, 1800) end))
+
+      assert ETS.check_token(["file.txt"], token) == :ok
+    end
+  end
+
   describe "lock/6" do
     test "deletes the locks that have expired" do
       {:ok, abandoned} = ETS.lock(["abandoned.txt"], :exclusive, :write, 0, nil, 1800)
