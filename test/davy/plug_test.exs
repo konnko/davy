@@ -969,6 +969,27 @@ defmodule Davy.PlugTest do
       assert (conn(:put, "/missing/new.txt", "data") |> call(opts)).status == 201
     end
 
+    test "reports the timeout the lock store granted", _ do
+      opts = Davy.Plug.init(backend: InMemory, lock_store: Davy.Test.ShortLockStore)
+      conn(:put, "/test.txt", "data") |> call(opts)
+
+      lock_body = """
+      <?xml version="1.0" encoding="utf-8"?>
+      <D:lockinfo xmlns:D="DAV:">
+        <D:lockscope><D:exclusive/></D:lockscope>
+        <D:locktype><D:write/></D:locktype>
+      </D:lockinfo>
+      """
+
+      resp =
+        conn(:lock, "/test.txt", lock_body)
+        |> put_req_header("timeout", "Second-600")
+        |> call(opts)
+
+      assert resp.status == 200
+      assert resp.resp_body =~ "Second-60<"
+    end
+
     test "returns 423 when lock conflicts", %{opts: opts} do
       conn(:put, "/test.txt", "data") |> call(opts)
 

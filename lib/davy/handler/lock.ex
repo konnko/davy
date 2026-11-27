@@ -54,7 +54,8 @@ defmodule Davy.Handler.Lock do
 
     case result do
       {:ok, token} ->
-        send_lock_response(conn, opts, path, scope, depth, owner, token, timeout)
+        granted = granted_timeout(opts, lock_path, token, timeout)
+        send_lock_response(conn, opts, path, scope, depth, owner, token, granted)
 
       {:error, :conflict} ->
         Helpers.send_error(conn, Helpers.locked_error())
@@ -99,6 +100,22 @@ defmodule Davy.Handler.Lock do
         # (RFC 4918 §9.10.4), so there is nothing to hold a lock on.
         release(opts, token)
         Helpers.send_error(conn, error)
+    end
+  end
+
+  # A lock store may grant less time than was asked for; the client has to be
+  # told what it got, or it will not refresh the lock in time.
+  defp granted_timeout(opts, lock_path, token, requested) do
+    locks =
+      Telemetry.span_lock_store(opts.lock_store, :get_locks, %{path: lock_path}, fn ->
+        opts.lock_store.get_locks(lock_path)
+      end)
+
+    with {:ok, locks} <- locks,
+         %{timeout: granted} <- Enum.find(locks, &(&1.token == token)) do
+      granted
+    else
+      _ -> requested
     end
   end
 
