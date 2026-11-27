@@ -2,8 +2,9 @@ defmodule Davy.LockStore.ETS do
   @moduledoc """
   ETS-based in-memory lock store for single-node deployments.
 
-  Locks are stored in a named ETS table with TTL-based expiry.
-  Expired locks are cleaned up lazily on access.
+  Locks are stored in a named ETS table with TTL-based expiry. Expired locks
+  are deleted whenever a new lock is taken, so the table holds the active
+  locks and those expired since the last LOCK.
   """
 
   @behaviour Davy.LockStore
@@ -37,6 +38,7 @@ defmodule Davy.LockStore.ETS do
   def lock(path, scope, type, depth, owner, timeout) do
     init()
     now = System.system_time(:second)
+    delete_expired(now)
 
     if conflict_with_existing?(path, depth, scope, now) do
       {:error, :conflict}
@@ -147,6 +149,10 @@ defmodule Davy.LockStore.ETS do
       _ ->
         {:error, :invalid_token}
     end
+  end
+
+  defp delete_expired(now) do
+    :ets.select_delete(@table, [{{:_, %{expires_at: :"$1"}}, [{:"=<", :"$1", now}], [true]}])
   end
 
   defp get_active_locks(path, now) do

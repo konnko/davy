@@ -9,6 +9,18 @@ defmodule Davy.LockStore.ETSTest do
   end
 
   describe "lock/6" do
+    test "deletes the locks that have expired" do
+      {:ok, abandoned} = ETS.lock(["abandoned.txt"], :exclusive, :write, 0, nil, 1800)
+      {:ok, held} = ETS.lock(["held.txt"], :exclusive, :write, 0, nil, 1800)
+      [{^abandoned, info}] = :ets.lookup(ETS, abandoned)
+      :ets.insert(ETS, {abandoned, %{info | expires_at: System.system_time(:second) - 1}})
+
+      {:ok, new} = ETS.lock(["new.txt"], :exclusive, :write, 0, nil, 1800)
+
+      assert ETS |> :ets.tab2list() |> Enum.map(&elem(&1, 0)) |> Enum.sort() ==
+               Enum.sort([held, new])
+    end
+
     test "creates a lock and returns a token" do
       assert {:ok, token} = ETS.lock(["file.txt"], :exclusive, :write, 0, "owner", 1800)
       assert is_binary(token)
