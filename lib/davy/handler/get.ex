@@ -135,6 +135,7 @@ defmodule Davy.Handler.Get do
 
   defp resolve_range(conn, resource) do
     with ["bytes=" <> spec] <- get_req_header(conn, "range"),
+         true <- if_range_holds?(conn, resource),
          {:ok, requested} <- parse_byte_range(spec),
          {:ok, first, last} <- resolve_byte_range(requested, resource.content_length) do
       %{range: {first, last}}
@@ -143,6 +144,19 @@ defmodule Davy.Handler.Get do
       _ -> %{}
     end
   end
+
+  # RFC 9110 §13.1.5: a range applies only while the representation is still the
+  # one the client holds a part of. Only a strong entity-tag proves that; an
+  # HTTP-date or a weak tag does not, so those get the whole representation.
+  defp if_range_holds?(conn, resource) do
+    case get_req_header(conn, "if-range") do
+      [] -> true
+      validators -> validators == [resource.etag] and strong_etag?(resource.etag)
+    end
+  end
+
+  defp strong_etag?("\"" <> _opaque_tag), do: true
+  defp strong_etag?(_weak_or_missing), do: false
 
   defp parse_byte_range(spec) do
     case String.split(spec, "-", parts: 2) do

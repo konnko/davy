@@ -316,6 +316,74 @@ defmodule Davy.PlugTest do
     end
   end
 
+  describe "GET with Range and If-Range" do
+    setup %{opts: opts} do
+      conn(:put, "/range.txt", "0123456789ABCDEF") |> call(opts)
+      etag = conn(:head, "/range.txt") |> call(opts) |> get_header("etag")
+      {:ok, etag: etag}
+    end
+
+    defp get_range_if(path, spec, validator, opts) do
+      conn(:get, path)
+      |> put_req_header("range", spec)
+      |> put_req_header("if-range", validator)
+      |> call(opts)
+    end
+
+    test "serves the range while the ETag is current", %{opts: opts, etag: etag} do
+      resp = get_range_if("/range.txt", "bytes=10-", etag, opts)
+
+      assert resp.status == 206
+      assert resp.resp_body == "ABCDEF"
+      assert get_header(resp, "content-range") == "bytes 10-15/16"
+    end
+
+    test "serves the whole new content once the ETag is stale", %{opts: opts, etag: etag} do
+      conn(:put, "/range.txt", "fedcba9876543210") |> call(opts)
+
+      resp = get_range_if("/range.txt", "bytes=10-", etag, opts)
+
+      assert resp.status == 200
+      assert resp.resp_body == "fedcba9876543210"
+      assert get_header(resp, "content-range") == nil
+    end
+
+    test "a stale ETag wins over a range the new content cannot satisfy",
+         %{opts: opts, etag: etag} do
+      conn(:put, "/range.txt", "short") |> call(opts)
+
+      resp = get_range_if("/range.txt", "bytes=10-", etag, opts)
+
+      assert resp.status == 200
+      assert resp.resp_body == "short"
+    end
+
+    test "serves the whole content for a weak tag or a date", %{opts: opts, etag: etag} do
+      last_modified = conn(:head, "/range.txt") |> call(opts) |> get_header("last-modified")
+
+      for validator <- ["W/" <> etag, last_modified] do
+        resp = get_range_if("/range.txt", "bytes=10-", validator, opts)
+
+        assert resp.status == 200
+        assert resp.resp_body == "0123456789ABCDEF"
+      end
+    end
+
+    test "HEAD reports the whole content once the ETag is stale", %{opts: opts, etag: etag} do
+      conn(:put, "/range.txt", "fedcba9876543210") |> call(opts)
+
+      resp =
+        conn(:head, "/range.txt")
+        |> put_req_header("range", "bytes=10-")
+        |> put_req_header("if-range", etag)
+        |> call(opts)
+
+      assert resp.status == 200
+      assert get_header(resp, "content-length") == "16"
+      assert get_header(resp, "content-range") == nil
+    end
+  end
+
   describe "GET (streaming backend)" do
     setup do
       StreamingBackend.start()

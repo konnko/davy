@@ -85,7 +85,8 @@ defmodule Davy.Backend do
   always holds — a backend never has to clamp a range or decide whether one is
   satisfiable. Resources reporting no `content_length` are never asked for a
   partial read, because there is nothing to resolve suffix and open-ended
-  ranges against.
+  ranges against. Neither is a request whose `If-Range` does not match the
+  resource's `etag`: it gets the whole content.
 
   Return `{:ok, iodata}` or `{:ok, enumerable}` for streaming.
   """
