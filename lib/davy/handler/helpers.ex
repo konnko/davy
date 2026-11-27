@@ -223,6 +223,40 @@ defmodule Davy.Handler.Helpers do
   end
 
   @doc """
+  Release the locks held on `path` and on everything below it.
+
+  Called once the resource is gone from `path` (DELETE, MOVE): RFC 4918 §9.6
+  has the server destroy the locks rooted there, and a lock left behind would
+  refuse the next client that creates something under the same name.
+  """
+  @spec release_locks(map(), [String.t()]) :: :ok
+  def release_locks(%{lock_store: lock_store} = opts, path) do
+    lock_path = lock_path(opts, path)
+
+    held =
+      Telemetry.span_lock_store(lock_store, :get_locks, %{path: lock_path}, fn ->
+        lock_store.get_locks(lock_path)
+      end)
+
+    below =
+      Telemetry.span_lock_store(lock_store, :get_descendant_locks, %{path: lock_path}, fn ->
+        lock_store.get_descendant_locks(lock_path)
+      end)
+
+    # The resource is already gone; a store that cannot answer now keeps its
+    # locks until they expire.
+    with {:ok, held} <- held, {:ok, below} <- below do
+      Enum.each(held ++ below, fn %{token: token} ->
+        Telemetry.span_lock_store(lock_store, :unlock, %{token: token}, fn ->
+          lock_store.unlock(token)
+        end)
+      end)
+    end
+
+    :ok
+  end
+
+  @doc """
   Send a 207 Multi-Status with one status per resource path.
   """
   @spec send_multistatus(Plug.Conn.t(), [{[String.t()], Plug.Conn.status()}]) ::

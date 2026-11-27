@@ -22,6 +22,7 @@ defmodule Davy.Handler.Delete do
 
       case result do
         :ok ->
+          Helpers.release_locks(opts, path)
           send_resp(conn, 204, "")
 
         {:partial, failures} ->

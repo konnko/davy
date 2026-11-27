@@ -1238,6 +1238,68 @@ defmodule Davy.PlugTest do
     end
   end
 
+  describe "locks of a resource that is gone" do
+    @lock_body """
+    <?xml version="1.0" encoding="utf-8"?>
+    <D:lockinfo xmlns:D="DAV:">
+      <D:lockscope><D:exclusive/></D:lockscope>
+      <D:locktype><D:write/></D:locktype>
+    </D:lockinfo>
+    """
+
+    defp lock_token(path, opts) do
+      conn(:lock, path, @lock_body) |> call(opts) |> get_header("lock-token")
+    end
+
+    test "MOVE releases the locks on the source and below it", %{opts: opts} do
+      conn(:mkcol, "/dir") |> call(opts)
+      conn(:put, "/dir/a.txt", "data") |> call(opts)
+      dir_token = lock_token("/dir", opts)
+      file_token = lock_token("/dir/a.txt", opts)
+
+      resp =
+        conn(:move, "/dir")
+        |> put_req_header("destination", "http://localhost/moved")
+        |> put_req_header("if", "(#{dir_token}) (#{file_token})")
+        |> call(opts)
+
+      assert resp.status == 201
+
+      # Another client, holding no token, can use the old names again.
+      assert (conn(:mkcol, "/dir") |> call(opts)).status == 201
+      assert (conn(:put, "/dir/a.txt", "other") |> call(opts)).status == 201
+    end
+
+    test "DELETE releases the locks on the resource and below it", %{opts: opts} do
+      conn(:mkcol, "/dir") |> call(opts)
+      conn(:put, "/dir/a.txt", "data") |> call(opts)
+      dir_token = lock_token("/dir", opts)
+      file_token = lock_token("/dir/a.txt", opts)
+
+      resp =
+        conn(:delete, "/dir")
+        |> put_req_header("if", "(#{dir_token}) (#{file_token})")
+        |> call(opts)
+
+      assert resp.status == 204
+      assert (conn(:mkcol, "/dir") |> call(opts)).status == 201
+      assert (conn(:put, "/dir/a.txt", "other") |> call(opts)).status == 201
+    end
+
+    test "COPY leaves the locks on the source", %{opts: opts} do
+      conn(:put, "/a.txt", "data") |> call(opts)
+      lock_token("/a.txt", opts)
+
+      resp =
+        conn(:copy, "/a.txt")
+        |> put_req_header("destination", "http://localhost/b.txt")
+        |> call(opts)
+
+      assert resp.status == 201
+      assert (conn(:put, "/a.txt", "other") |> call(opts)).status == 423
+    end
+  end
+
   describe "UNLOCK" do
     test "releases a lock", %{opts: opts} do
       conn(:put, "/test.txt", "data") |> call(opts)

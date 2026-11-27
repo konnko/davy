@@ -54,9 +54,12 @@ defmodule Davy.Handler.CopyMove do
       end)
 
     case result do
-      {:ok, :created} -> send_resp(conn, 201, "")
-      {:ok, :no_content} -> send_resp(conn, 204, "")
-      {:error, error} -> Helpers.send_error(conn, error)
+      {:ok, outcome} ->
+        if operation == :move, do: Helpers.release_locks(opts, resource.path)
+        send_resp(conn, if(outcome == :created, do: 201, else: 204), "")
+
+      {:error, error} ->
+        Helpers.send_error(conn, error)
     end
   end
 
