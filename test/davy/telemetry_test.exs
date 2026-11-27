@@ -29,6 +29,22 @@ defmodule Davy.TelemetryTest do
     ExUnit.Callbacks.on_exit(fn -> :telemetry.detach(ref) end)
   end
 
+  describe "HEAD" do
+    test "is answered from the resource, without reading content", %{opts: opts} do
+      conn(:put, "/file.txt", "hello") |> call(opts)
+      attach([[:davy, :backend, :get_content, :start]])
+
+      resp = conn(:head, "/file.txt") |> call(opts)
+
+      assert resp.status == 200
+      assert get_resp_header(resp, "content-length") == ["5"]
+      refute_received {[:davy, :backend, :get_content, :start], _ref, _measurements, _meta}
+
+      conn(:get, "/file.txt") |> call(opts)
+      assert_received {[:davy, :backend, :get_content, :start], _ref, _measurements, _meta}
+    end
+  end
+
   describe "[:davy, :request, ...]" do
     test "emits start and stop for a handled request", %{opts: opts} do
       attach([[:davy, :request, :start], [:davy, :request, :stop]])

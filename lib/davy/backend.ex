@@ -77,7 +77,7 @@ defmodule Davy.Backend do
   # --- File operations ---
 
   @doc """
-  Read file content.
+  Read file content. Called for GET only: HEAD is answered from the resource.
 
   When `opts` contains `:range` as `{first, last}`, return exactly those bytes.
   Both positions are absolute and inclusive, and have already been resolved

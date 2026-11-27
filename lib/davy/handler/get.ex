@@ -37,6 +37,10 @@ defmodule Davy.Handler.Get do
     |> Helpers.send_error(%Error{code: :range_not_satisfiable, message: "Range Not Satisfiable"})
   end
 
+  # HEAD sends headers only, and all of them come from the resource.
+  defp read_and_send(%{method: "HEAD"} = conn, _opts, resource, range_opts),
+    do: send_content(conn, resource, "", range_opts)
+
   defp read_and_send(conn, opts, resource, range_opts) do
     result =
       Telemetry.span_backend(opts.backend, :get_content, %{path: resource.path}, fn ->
