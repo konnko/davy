@@ -1380,6 +1380,54 @@ defmodule Davy.PlugTest do
 
   # --- Unsupported method ---
 
+  describe "what the request says, passed to the backend" do
+    setup do
+      {:ok, opts: Davy.Plug.init(backend: Davy.Test.RecordingBackend)}
+    end
+
+    test "PUT passes the declared body length", %{opts: opts} do
+      conn(:put, "/a.txt", "hello") |> put_req_header("content-length", "5") |> call(opts)
+      assert_received {:put_content, %{content_length: 5}}
+
+      conn(:put, "/b.txt", "hello")
+      |> put_req_header("x-expected-entity-length", "5")
+      |> call(opts)
+
+      assert_received {:put_content, %{content_length: 5}}
+
+      conn(:put, "/c.txt", "hello") |> call(opts)
+      assert_received {:put_content, %{content_length: nil}}
+    end
+
+    test "LOCK on a free path creates a resource of no length", %{opts: opts} do
+      lock_body = """
+      <?xml version="1.0" encoding="utf-8"?>
+      <D:lockinfo xmlns:D="DAV:">
+        <D:lockscope><D:exclusive/></D:lockscope>
+        <D:locktype><D:write/></D:locktype>
+      </D:lockinfo>
+      """
+
+      conn(:lock, "/new.txt", lock_body)
+      |> put_req_header("content-length", Integer.to_string(byte_size(lock_body)))
+      |> call(opts)
+
+      assert_received {:put_content, %{content_length: 0}}
+    end
+
+    test "COPY passes the Depth to copy/5", %{opts: opts} do
+      conn(:mkcol, "/dir") |> call(opts)
+
+      for {header, depth} <- [{"0", 0}, {"infinity", :infinity}, {nil, :infinity}] do
+        request = conn(:copy, "/dir") |> put_req_header("destination", "http://localhost/copy")
+        request = if header, do: put_req_header(request, "depth", header), else: request
+        call(request, opts)
+
+        assert_received {:copy, %{depth: ^depth}}
+      end
+    end
+  end
+
   describe "paths no resource can have" do
     test "answers 400 before the backend is asked", %{opts: opts} do
       conn(:put, "/a.txt", "kept") |> call(opts)

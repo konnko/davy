@@ -96,6 +96,14 @@ defmodule Davy.Backend do
   @doc """
   Create or replace a file at the given path.
 
+  `opts` carries what the request said about the body:
+
+  - `:content_type` — the `Content-Type` header, `application/octet-stream`
+    when the client sent none;
+  - `:content_length` — the size the client declared (`Content-Length`, or
+    `X-Expected-Entity-Length` for a chunked body), `nil` when it declared
+    none. It lets a backend refuse a body that will not fit before reading it.
+
   Return `{:ok, resource}` with the created/updated resource.
   """
   @callback put_content(auth_context(), path(), body :: iodata(), opts :: map()) ::
@@ -107,7 +115,8 @@ defmodule Davy.Backend do
   Optional. When implemented, the PUT handler reads the request body in
   bounded slices and feeds them to the backend as a `Stream` instead of
   materialising the whole body in memory. Backends that don't implement this
-  callback are dispatched through `put_content/4` as before.
+  callback are dispatched through `put_content/4` as before. `opts` are those
+  of `put_content/4`.
 
   Return `{:ok, resource}` with the created/updated resource.
   """
@@ -119,7 +128,7 @@ defmodule Davy.Backend do
             ) ::
               {:ok, resource()} | {:error, error()}
 
-  @optional_callbacks put_content_stream: 4, lock_root: 1
+  @optional_callbacks put_content_stream: 4, lock_root: 1, copy: 4, copy: 5
 
   @doc """
   Delete a resource. For collections, the backend should handle recursive
@@ -137,6 +146,23 @@ defmodule Davy.Backend do
   to distinguish new vs overwritten destinations.
   """
   @callback copy(auth_context(), resource(), dest_path :: path(), overwrite? :: boolean()) ::
+              {:ok, :created | :no_content} | {:error, error()}
+
+  @doc """
+  Copy a resource to the destination path, honouring the request's `Depth`.
+
+  Implement this instead of `copy/4` to tell the two copies of a collection
+  apart: `opts.depth` is `:infinity` for the collection with everything in it
+  and `0` for the collection alone (RFC 4918 §9.8.3). A backend must implement
+  one of the two; when both exist this one is called.
+  """
+  @callback copy(
+              auth_context(),
+              resource(),
+              dest_path :: path(),
+              overwrite? :: boolean(),
+              opts :: %{depth: 0 | :infinity}
+            ) ::
               {:ok, :created | :no_content} | {:error, error()}
 
   @doc """

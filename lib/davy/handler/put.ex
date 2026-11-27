@@ -35,7 +35,7 @@ defmodule Davy.Handler.Put do
         end)
       )
 
-    backend_opts = %{content_type: content_type}
+    backend_opts = %{content_type: content_type, content_length: declared_length(conn)}
 
     {result, conn} = dispatch_put(conn, opts, path, backend_opts)
 
@@ -47,6 +47,18 @@ defmodule Davy.Handler.Put do
       {:error, error} ->
         Helpers.send_error(conn, error)
     end
+  end
+
+  # Finder sends the body chunked and names its size in its own header.
+  defp declared_length(conn) do
+    Enum.find_value(["content-length", "x-expected-entity-length"], fn header ->
+      with [value] <- get_req_header(conn, header),
+           {length, ""} when length >= 0 <- Integer.parse(value) do
+        length
+      else
+        _ -> nil
+      end
+    end)
   end
 
   defp dispatch_put(conn, opts, path, backend_opts) do

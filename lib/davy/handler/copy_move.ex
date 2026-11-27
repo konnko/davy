@@ -50,7 +50,7 @@ defmodule Davy.Handler.CopyMove do
 
     result =
       Telemetry.span_backend(opts.backend, operation, metadata, fn ->
-        run_copy_or_move(operation, opts, resource, dest_path, overwrite?)
+        run_copy_or_move(operation, conn, opts, resource, dest_path, overwrite?)
       end)
 
     case result do
@@ -63,11 +63,25 @@ defmodule Davy.Handler.CopyMove do
     end
   end
 
-  defp run_copy_or_move(:copy, opts, resource, dest_path, overwrite?),
-    do: opts.backend.copy(opts.auth, resource, dest_path, overwrite?)
+  defp run_copy_or_move(:copy, conn, opts, resource, dest_path, overwrite?) do
+    if function_exported?(opts.backend, :copy, 5) do
+      copy_opts = %{depth: copy_depth(conn)}
+      opts.backend.copy(opts.auth, resource, dest_path, overwrite?, copy_opts)
+    else
+      opts.backend.copy(opts.auth, resource, dest_path, overwrite?)
+    end
+  end
 
-  defp run_copy_or_move(:move, opts, resource, dest_path, overwrite?),
+  defp run_copy_or_move(:move, _conn, opts, resource, dest_path, overwrite?),
     do: opts.backend.move(opts.auth, resource, dest_path, overwrite?)
+
+  # RFC 4918 §9.8.3: COPY takes `Depth: 0` or `infinity`, the latter by default.
+  defp copy_depth(conn) do
+    case Helpers.parse_depth(conn, :infinity) do
+      0 -> 0
+      _ -> :infinity
+    end
+  end
 
   defp check_not_self(path, path), do: {:error, :forbidden}
   defp check_not_self(_, _), do: :ok

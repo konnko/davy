@@ -250,7 +250,8 @@ defmodule Davy.Handler.Lock do
     result =
       Telemetry.span_backend(opts.backend, :put_content, %{path: path}, fn ->
         opts.backend.put_content(opts.auth, path, "", %{
-          content_type: "application/octet-stream"
+          content_type: "application/octet-stream",
+          content_length: 0
         })
       end)
 
