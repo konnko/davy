@@ -46,6 +46,13 @@ defmodule Davy.Plug do
 
   @impl true
   def call(conn, opts) do
+    case Handler.Helpers.decode_path(conn.path_info) do
+      {:ok, _path} -> call_authenticated(conn, opts)
+      :error -> Plug.Conn.send_resp(conn, 400, "Bad Request")
+    end
+  end
+
+  defp call_authenticated(conn, opts) do
     conn = Plug.Conn.fetch_query_params(conn)
 
     case authenticate(opts.backend, conn) do

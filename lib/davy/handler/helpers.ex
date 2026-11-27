@@ -13,6 +13,26 @@ defmodule Davy.Handler.Helpers do
   end
 
   @doc """
+  Decode raw URI path segments into a resource path.
+
+  Returns `:error` for a path no resource can have: a percent escape
+  `URI.decode/1` refuses, or a decoded segment that is `.` or `..` or
+  contains `/` or NUL.
+  Such segments never reach the backend, which would otherwise have to guard
+  against a `..` or an encoded `/` walking out of its tree.
+  """
+  @spec decode_path([String.t()]) :: {:ok, [String.t()]} | :error
+  def decode_path(segments) do
+    decoded = Enum.map(segments, &URI.decode/1)
+    if Enum.any?(decoded, &unsafe_segment?/1), do: :error, else: {:ok, decoded}
+  rescue
+    ArgumentError -> :error
+  end
+
+  defp unsafe_segment?(segment),
+    do: segment in [".", ".."] or String.contains?(segment, ["/", <<0>>])
+
+  @doc """
   Build the full href for a resource path, including the script_name prefix.
 
   Every segment is percent-encoded down to the unreserved characters, so a name
@@ -50,7 +70,10 @@ defmodule Davy.Handler.Helpers do
         uri = URI.parse(dest_uri)
         segments = String.split(uri.path || "/", "/", trim: true)
 
-        {:ok, segments |> drop_mount_point(conn.script_name) |> Enum.map(&URI.decode/1)}
+        case segments |> drop_mount_point(conn.script_name) |> decode_path() do
+          {:ok, path} -> {:ok, path}
+          :error -> {:error, :bad_request}
+        end
 
       [] ->
         {:error, :bad_request}

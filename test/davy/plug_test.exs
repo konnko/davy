@@ -1247,6 +1247,34 @@ defmodule Davy.PlugTest do
 
   # --- Unsupported method ---
 
+  describe "paths no resource can have" do
+    test "answers 400 before the backend is asked", %{opts: opts} do
+      conn(:put, "/a.txt", "kept") |> call(opts)
+
+      for path <- ["/dir/../a.txt", "/./a.txt", "/dir%2Fa.txt", "/a%00.txt"],
+          method <- [:get, :put, :delete, :mkcol, :propfind, :lock] do
+        assert conn(method, path, "body") |> call(opts) |> Map.fetch!(:status) == 400
+      end
+
+      assert (conn(:get, "/a.txt") |> call(opts)).resp_body == "kept"
+    end
+
+    test "COPY and MOVE answer 400 for such a Destination", %{opts: opts} do
+      conn(:put, "/a.txt", "kept") |> call(opts)
+
+      for method <- [:copy, :move], destination <- ["/dir/../b.txt", "/dir%2Fb.txt"] do
+        resp =
+          conn(method, "/a.txt")
+          |> put_req_header("destination", "http://localhost" <> destination)
+          |> call(opts)
+
+        assert resp.status == 400
+      end
+
+      assert (conn(:get, "/a.txt") |> call(opts)).resp_body == "kept"
+    end
+  end
+
   describe "unsupported methods" do
     test "returns 405 for POST", %{opts: opts} do
       resp = conn(:post, "/test", "body") |> call(opts)

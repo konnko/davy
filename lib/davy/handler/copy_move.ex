@@ -20,7 +20,7 @@ defmodule Davy.Handler.CopyMove do
         Helpers.send_multistatus(conn, Enum.map(locked_paths, &{&1, 423}))
 
       {:error, :bad_request} ->
-        send_resp(conn, 400, "Missing Destination header")
+        send_resp(conn, 400, "Missing or malformed Destination header")
 
       {:error, :forbidden} ->
         send_resp(conn, 403, "Cannot copy/move to descendant of self")
