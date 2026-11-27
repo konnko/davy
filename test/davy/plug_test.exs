@@ -1270,6 +1270,34 @@ defmodule Davy.PlugTest do
     end
   end
 
+  describe "LOCK and UNLOCK with a backend authorize_lock" do
+    test "are refused with the backend's error, locking and creating nothing", %{opts: opts} do
+      conn(:put, "/test.txt", "data") |> call(opts)
+      read_only = Davy.Plug.init(backend: Davy.Test.ReadOnlyBackend)
+
+      lock_body = """
+      <?xml version="1.0" encoding="utf-8"?>
+      <D:lockinfo xmlns:D="DAV:">
+        <D:lockscope><D:exclusive/></D:lockscope>
+        <D:locktype><D:write/></D:locktype>
+      </D:lockinfo>
+      """
+
+      assert (conn(:lock, "/test.txt", lock_body) |> call(read_only)).status == 403
+      assert (conn(:lock, "/new.txt", lock_body) |> call(read_only)).status == 403
+      assert (conn(:get, "/new.txt") |> call(opts)).status == 404
+      assert :ets.tab2list(LockStore.ETS) == []
+
+      token = conn(:lock, "/test.txt", lock_body) |> call(opts) |> get_header("lock-token")
+
+      unlock =
+        conn(:unlock, "/test.txt") |> put_req_header("lock-token", token) |> call(read_only)
+
+      assert unlock.status == 403
+      assert (conn(:put, "/test.txt", "other") |> call(opts)).status == 423
+    end
+  end
+
   describe "locks of a resource that is gone" do
     @lock_body """
     <?xml version="1.0" encoding="utf-8"?>

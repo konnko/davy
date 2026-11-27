@@ -128,7 +128,7 @@ defmodule Davy.Backend do
             ) ::
               {:ok, resource()} | {:error, error()}
 
-  @optional_callbacks put_content_stream: 4, lock_root: 1, copy: 4, copy: 5
+  @optional_callbacks put_content_stream: 4, lock_root: 1, authorize_lock: 2, copy: 4, copy: 5
 
   @doc """
   Delete a resource. For collections, the backend should handle recursive
@@ -194,6 +194,17 @@ defmodule Davy.Backend do
   agree on the lock for `tenant-42/photos/a.jpg`.
   """
   @callback lock_root(auth_context()) :: path()
+
+  @doc """
+  Decide whether this auth context may lock, refresh or unlock the path.
+
+  Optional. Davy keeps locks in the `Davy.LockStore` and never asks the
+  backend about them, so without this callback every authenticated client can
+  lock any path — including a client the backend lets read but not write,
+  whose lock would then stop the writers. Return `{:error, error}` to refuse
+  LOCK and UNLOCK with that error's status; nothing is locked or created.
+  """
+  @callback authorize_lock(auth_context(), path()) :: :ok | {:error, error()}
 
   # --- Collection operations ---
 

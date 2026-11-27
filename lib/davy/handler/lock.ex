@@ -8,8 +8,21 @@ defmodule Davy.Handler.Lock do
 
   @doc false
   @spec handle(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def handle(%{method: "LOCK"} = conn, opts), do: handle_lock(conn, opts)
-  def handle(%{method: "UNLOCK"} = conn, opts), do: handle_unlock(conn, opts)
+  def handle(conn, opts) do
+    case authorize(opts, Helpers.resource_path(conn)) do
+      :ok -> handle_authorized(conn, opts)
+      {:error, %Error{} = error} -> Helpers.send_error(conn, error)
+    end
+  end
+
+  defp authorize(%{backend: backend, auth: auth}, path) do
+    if function_exported?(backend, :authorize_lock, 2),
+      do: backend.authorize_lock(auth, path),
+      else: :ok
+  end
+
+  defp handle_authorized(%{method: "LOCK"} = conn, opts), do: handle_lock(conn, opts)
+  defp handle_authorized(%{method: "UNLOCK"} = conn, opts), do: handle_unlock(conn, opts)
 
   defp handle_lock(conn, opts) do
     path = Helpers.resource_path(conn)
