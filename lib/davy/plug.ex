@@ -13,6 +13,9 @@ defmodule Davy.Plug do
   - `:lock_store` — module implementing `Davy.LockStore`
     (default: `Davy.LockStore.ETS`)
   - `:lock_timeout` — default lock timeout in seconds (default: 1800)
+  - `:max_lock_timeout` — the longest a lock is granted or refreshed for, in
+    seconds, whatever the client asks. Without it a client that asks for a day
+    and goes away keeps the resource locked for a day. (default: `:infinity`)
   - `:allow_infinity_depth` — allow `Depth: infinity` on PROPFIND (default: false)
   - `:max_buffered_put_bytes` — cap on PUT bodies when the backend does not
     implement `put_content_stream/4`. Bodies larger than this return
@@ -37,6 +40,7 @@ defmodule Davy.Plug do
       backend: Keyword.fetch!(opts, :backend),
       lock_store: Keyword.get(opts, :lock_store, Davy.LockStore.ETS),
       lock_timeout: Keyword.get(opts, :lock_timeout, 1800),
+      max_lock_timeout: Keyword.get(opts, :max_lock_timeout, :infinity),
       allow_infinity_depth: Keyword.get(opts, :allow_infinity_depth, false),
       max_buffered_put_bytes:
         Keyword.get(opts, :max_buffered_put_bytes, @default_max_buffered_put_bytes),

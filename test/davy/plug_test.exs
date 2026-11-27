@@ -990,6 +990,38 @@ defmodule Davy.PlugTest do
       assert resp.resp_body =~ "Second-60<"
     end
 
+    test "grants and refreshes a lock for no longer than :max_lock_timeout", _ do
+      opts = Davy.Plug.init(backend: InMemory, max_lock_timeout: 120)
+      conn(:put, "/test.txt", "data") |> call(opts)
+
+      lock_body = """
+      <?xml version="1.0" encoding="utf-8"?>
+      <D:lockinfo xmlns:D="DAV:">
+        <D:lockscope><D:exclusive/></D:lockscope>
+        <D:locktype><D:write/></D:locktype>
+      </D:lockinfo>
+      """
+
+      resp =
+        conn(:lock, "/test.txt", lock_body)
+        |> put_req_header("timeout", "Second-86400")
+        |> call(opts)
+
+      assert resp.resp_body =~ "Second-120<"
+      token = get_header(resp, "lock-token")
+
+      refreshed =
+        conn(:lock, "/test.txt")
+        |> put_req_header("if", "(#{token})")
+        |> put_req_header("timeout", "Second-86400")
+        |> call(opts)
+
+      assert refreshed.status == 200
+      assert refreshed.resp_body =~ "Second-120<"
+      [{_token, lock}] = :ets.tab2list(LockStore.ETS)
+      assert lock.timeout == 120
+    end
+
     test "returns 423 when lock conflicts", %{opts: opts} do
       conn(:put, "/test.txt", "data") |> call(opts)
 

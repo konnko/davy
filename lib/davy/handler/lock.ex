@@ -13,7 +13,7 @@ defmodule Davy.Handler.Lock do
 
   defp handle_lock(conn, opts) do
     path = Helpers.resource_path(conn)
-    timeout = Helpers.parse_timeout(conn, opts.lock_timeout)
+    timeout = conn |> Helpers.parse_timeout(opts.lock_timeout) |> cap_timeout(opts)
     depth = parse_lock_depth(conn)
 
     case {Helpers.extract_lock_tokens(conn), peek_body(conn)} do
@@ -21,6 +21,9 @@ defmodule Davy.Handler.Lock do
       _ -> create_lock(conn, opts, path, depth, timeout)
     end
   end
+
+  defp cap_timeout(timeout, %{max_lock_timeout: :infinity}), do: timeout
+  defp cap_timeout(timeout, %{max_lock_timeout: max}), do: min(timeout, max)
 
   defp create_lock(conn, opts, path, depth, timeout) do
     # audit:bounded WebDAV LOCK body is a small lockinfo XML (RFC 4918 §9.10)
